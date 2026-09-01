@@ -1,0 +1,26 @@
+# Serves the Streamlit ops dashboard. Separate image from the API so the
+# two services can be deployed, scaled, and restarted independently -- the
+# dashboard is a convenience view for a human, the API is what other
+# services depend on.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY pyproject.toml .
+COPY src/ src/
+# -e (editable): see deployment/Dockerfile for why a non-editable install
+# here would break harbor.config.REPO_ROOT. dashboards/app.py happens to
+# also sys.path-insert src/ directly, so this container would likely still
+# work without -e, but keeping both Dockerfiles consistent is worth more
+# than relying on that second safety net.
+RUN pip install --no-cache-dir -e .
+
+COPY configs/ configs/
+COPY dashboards/ dashboards/
+COPY models_store/ models_store/
+COPY data/processed/ data/processed/
+
+EXPOSE 8501
+ENV PYTHONUNBUFFERED=1
+
+CMD ["streamlit", "run", "dashboards/app.py", "--server.address=0.0.0.0", "--server.port=8501"]

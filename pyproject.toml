@@ -1,0 +1,49 @@
+[project]
+name = "harbor"
+version = "0.1.0"
+description = "Harbor: a customer-retention decision engine for subscription SaaS businesses."
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "scipy>=1.10",
+    "statsmodels>=0.14",
+    "vaderSentiment>=3.3.2",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "joblib>=1.3",
+    "pyyaml>=6.0",
+    "streamlit>=1.32",
+    "shap>=0.45",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "build>=1.0",
+]
+notebook = [
+    "jupyter>=1.0",
+    "nbconvert>=7.0",
+    "matplotlib>=3.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "slow: builds/installs a real wheel to reproduce a packaging bug -- slower than the rest of the suite (see test_packaging.py)",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

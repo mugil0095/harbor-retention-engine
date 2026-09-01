@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests pipelines dashboards
+
+      - name: Run tests with coverage
+        run: pytest --cov=harbor --cov-report=term-missing -q
+
+      - name: Smoke-test the full pipeline on synthetic data
+        run: |
+          python pipelines/run_data_generation.py
+          python pipelines/run_training_pipeline.py
+          python pipelines/run_segmentation.py
+          python pipelines/run_batch_scoring.py
+          python pipelines/run_cohort_analysis.py
+          python pipelines/run_evaluation.py

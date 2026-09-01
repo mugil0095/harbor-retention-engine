@@ -1,0 +1,57 @@
+# Harbor configuration. All pipeline behavior is driven from this file so that
+# nothing is hard-coded in source modules.
+
+random_seed: 42
+models_dir: "models_store"   # where every pipeline reads/writes trained artifacts
+
+data:
+  n_accounts: 3000
+  # 30 months (not 24) so that late rolling-origin backtest windows can see
+  # two full 12-month seasonal cycles of history -- with only 24 months, the
+  # Holt-Winters and lag-based forecasters never get enough lookback and
+  # silently degrade to the naive baseline for every origin.
+  n_months_history: 30
+  observation_cutoff_month: 24   # features computed using months [0, cutoff); label uses [cutoff, cutoff+horizon)
+  churn_horizon_months: 3
+  # Multiple observation snapshots let us do time-aware validation: train on
+  # earlier snapshots, test on the latest one, rather than a random row split
+  # (a random split would leak future information across account-months).
+  snapshot_months: [9, 12, 15, 18, 21, 24, 27]
+  test_snapshot_month: 27
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  accounts_file: "accounts.csv"
+  usage_file: "monthly_usage.csv"
+  tickets_file: "support_tickets.csv"
+  experiment_file: "experiment_assignments.csv"
+  feature_store_file: "feature_store.parquet"
+
+experiment:
+  eligible_risk_percentile: 0.60   # only accounts above this predicted-risk percentile are RCT-eligible
+  treatment_fraction: 0.5
+  true_effect_high_engagement: -0.02   # ATE on 90d churn prob for high-engagement segment (small, real effects are small)
+  true_effect_low_engagement: -0.12    # larger effect for low-engagement / at-risk segment (heterogeneity)
+  true_effect_default: -0.06
+
+model:
+  churn:
+    test_size_months: 3         # last N cohort-months held out for time-aware test split
+    cv_splits: 4
+  forecasting:
+    horizon_months: 3
+    min_history_months: 9
+  uplift:
+    learner: "t_learner"
+
+decision:
+  intervention_cost_per_account: 45.0     # USD cost of a retention outreach/offer
+  avg_monthly_margin_per_account: 38.0    # USD gross margin per account per month retained
+  ltv_months_saved: 12                     # months of retained margin credited to a successful save
+
+serving:
+  host: "0.0.0.0"
+  port: 8000
+
+monitoring:
+  psi_warning_threshold: 0.1
+  psi_critical_threshold: 0.25

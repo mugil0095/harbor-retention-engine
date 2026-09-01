@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# generated data and artifacts (reproducible from pipelines, not committed)
+data/raw/*
+data/processed/*
+models_store/*
+runs/
+
+# keep directory placeholders
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!models_store/.gitkeep
+
+.env
+*.log
+.DS_Store
+.coverage
+.coverage.*
+htmlcov/
