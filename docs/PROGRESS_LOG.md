@@ -160,7 +160,22 @@ chronological history — append to it, never rewrite past entries.
   glue code validated by actually running them, same pattern as every
   other pipeline change so far.)
 
----
+### Same day — checked CI, found and fixed a real failure
+
+- Never actually checked before now whether GitHub Actions passed on the
+  2026-09-01 push. Checked via `gh run list` -- it had been **failing**
+  since that push, unnoticed.
+- Root cause: `ruff`'s `EXE001` rule (shebang present but file not
+  executable) failed on 6 `pipelines/*.py` scripts. They were committed
+  from Windows, which has no POSIX executable bit, so git stored them as
+  mode `100644`; `ruff check` passes silently on Windows (no bit to check)
+  but fails on GitHub's Linux runners, where the bit is real and absent.
+  Classic environment-dependent bug the local-only workflow couldn't catch.
+- Fixed with `git update-index --chmod=+x` on all 6 files (no source
+  changes needed) -- sets the git-tracked mode to `100755` so it's
+  preserved on checkout regardless of the committing machine's OS.
+- Not yet pushed -- next push should be watched via `gh run list` /
+  `gh run watch` to actually confirm green, not just assumed.
 
 ## Template for new entries
 
