@@ -115,6 +115,26 @@ chronological history — append to it, never rewrite past entries.
   pipeline → tests → real numbers → EVALUATION_REPORT.md → MODEL_CARD.md
   (CUPED only) → dashboard.
 
+### Same day — pushed to GitHub
+
+- User asked for git-push instructions to run themselves (Claude did not
+  push). Before handing them over, audited `.gitignore` and found real
+  gaps: `data/processed/*.json` and `*.parquet` (e.g. `feature_store.parquet`,
+  ~1MB), `data/raw/_ground_truth_latent_debug.parquet` (~900KB), and the
+  pytest `.coverage` file were all *not* excluded despite being fully
+  reproducible/run-specific. Fixed `.gitignore` to exclude everything
+  under `data/raw/`, `data/processed/`, and `models_store/` except
+  `.gitkeep` placeholders (which didn't exist yet either — created them).
+- Verified via `git add -A -n` dry run that the ~83 files that would be
+  staged were exactly source/tests/docs/config, nothing generated or
+  sensitive.
+- User pushed it themselves. Verified independently via
+  `git ls-remote origin main` (not just trusting the claim) — confirmed at
+  **https://github.com/mugil0095/harbor-retention-engine**, `main` branch,
+  initial commit `e4217cd`.
+- Next open items: confirm CI actually goes green on GitHub's runners (not
+  yet checked), Docker still never actually built.
+
 ---
 
 ## Template for new entries

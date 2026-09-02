@@ -43,13 +43,26 @@ it, read it when needed:
   containers on startup. Fixed (`-e .` in both Dockerfiles), reproduced and
   pinned as a regression test in `tests/test_packaging.py`.
 
+## Repository
+
+**Pushed to GitHub**: https://github.com/mugil0095/harbor-retention-engine
+(`main` branch). The user pushed it themselves from a local terminal (not
+via Claude) on 2026-09-01, initial commit `e4217cd`. Verified from this
+side via `git ls-remote origin main` matching the local commit — this
+actually happened, not just claimed.
+
+Before committing anything new: `.gitignore` was tightened the same day to
+exclude `data/raw/*`, `data/processed/*`, `models_store/*` (all
+reproducible), and `.coverage` — check `git status` looks sane (no
+`.venv`, no `*.joblib`/`*.parquet`, no `.coverage`) before staging.
+
 ## Explicitly NOT done — don't assume otherwise
 
-- **Nothing is committed to git.** The user said "not now" when asked —
-  don't commit without being asked again. `git status` will show everything
-  untracked; that's expected, not a problem to fix.
-- **CI has never actually run.** `.github/workflows/ci.yml` exists and is
-  correct, but there's no GitHub remote, so it has never executed for real.
+- **CI has not actually run yet.** `.github/workflows/ci.yml` exists and is
+  correct, and there's now a real GitHub remote for it to trigger on, but
+  no push has happened since the workflow file was last touched to confirm
+  it actually passes on GitHub's runners (only run locally so far). Check
+  the Actions tab on the repo, don't assume it's green.
 - **Docker has never actually been built.** No Docker available in this
   environment. The packaging bug above was found via manual wheel
   build/install reproduction (see `tests/test_packaging.py`), not via
