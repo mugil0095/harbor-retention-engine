@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-"""Nightly batch scoring: applies the trained churn model and T-learner
-uplift model to the latest feature-store snapshot, prices each account's
-expected intervention value via the decision engine, and writes
+"""Nightly batch scoring: applies the trained churn model and the uplift
+learner selected by `model.uplift.learner` in config.yaml (s_learner,
+t_learner, or x_learner -- all three are trained by run_training_pipeline.py)
+to the latest feature-store snapshot, prices each account's expected
+intervention value via the decision engine, and writes
 data/processed/batch_decisions.csv -- the table the API's
 `/accounts/{id}/decision` endpoint serves from.
 
@@ -32,10 +34,37 @@ from harbor.features.build_features import (
     CATEGORICAL_FEATURE_COLUMNS,
     NUMERIC_FEATURE_COLUMNS,
 )
+from harbor.models.uplift import (
+    predict_cate_s_learner,
+    predict_cate_t_learner,
+    predict_cate_x_learner,
+)
 from harbor.utils.artifacts import require_files_exist
 from harbor.utils.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
+
+UPLIFT_ARTIFACT_FILES = {
+    "s_learner": "uplift_s_learner.joblib",
+    "t_learner": "uplift_t_learner.joblib",
+    "x_learner": "uplift_x_learner.joblib",
+}
+
+
+def _score_uplift(learner: str, artifact, X_uplift: pd.DataFrame) -> np.ndarray:
+    """Dispatches to the CATE predictor matching `model.uplift.learner` in
+    config.yaml. All three learners were trained on the same encoded feature
+    columns (see run_training_pipeline.py), so no learner-specific column
+    list needs to be persisted -- the S-learner's extra `_treatment` column
+    is appended here to match the order fit_s_learner produced at train time."""
+    if learner == "s_learner":
+        X_s = X_uplift.assign(_treatment=0)
+        return predict_cate_s_learner(artifact, X_s)
+    if learner == "t_learner":
+        return predict_cate_t_learner(artifact["treat"], artifact["control"], X_uplift)
+    if learner == "x_learner":
+        return predict_cate_x_learner(artifact["tau1"], artifact["tau0"], artifact["propensity"], X_uplift)
+    raise ValueError(f"Unknown model.uplift.learner in config: {learner!r} (expected one of {list(UPLIFT_ARTIFACT_FILES)})")
 
 
 def main() -> None:
@@ -43,18 +72,25 @@ def main() -> None:
     cfg = load_config()
     data_cfg = cfg.section("data")
     decision_cfg = cfg.section("decision")
+    uplift_learner = cfg.section("model")["uplift"]["learner"]
     models_dir = cfg.models_dir
     processed_dir = cfg.path(key="processed_dir")
 
+    if uplift_learner not in UPLIFT_ARTIFACT_FILES:
+        raise ValueError(
+            f"Unknown model.uplift.learner in config: {uplift_learner!r} "
+            f"(expected one of {list(UPLIFT_ARTIFACT_FILES)})"
+        )
+
     churn_model_path = models_dir / "churn_advanced_model.joblib"
-    t_learner_path = models_dir / "uplift_t_learner.joblib"
+    uplift_model_path = models_dir / UPLIFT_ARTIFACT_FILES[uplift_learner]
     encoded_cols_path = models_dir / "uplift_feature_columns_encoded.joblib"
     require_files_exist(
-        [churn_model_path, t_learner_path, encoded_cols_path], context="Batch scoring"
+        [churn_model_path, uplift_model_path, encoded_cols_path], context="Batch scoring"
     )
 
     churn_model = joblib.load(churn_model_path)
-    t_learner = joblib.load(t_learner_path)
+    uplift_artifact = joblib.load(uplift_model_path)
     encoded_columns = joblib.load(encoded_cols_path)
 
     feature_store = pd.read_parquet(processed_dir / data_cfg["feature_store_file"])
@@ -66,9 +102,8 @@ def main() -> None:
 
     X_uplift = pd.get_dummies(current[UPLIFT_FEATURE_COLUMNS], drop_first=True)
     X_uplift = X_uplift.reindex(columns=encoded_columns, fill_value=0)
-    p_treat = t_learner["treat"].predict_proba(X_uplift)[:, 1]
-    p_control = t_learner["control"].predict_proba(X_uplift)[:, 1]
-    predicted_uplift = p_control - p_treat
+    predicted_uplift = _score_uplift(uplift_learner, uplift_artifact, X_uplift)
+    logger.info("Scored uplift using model.uplift.learner=%s", uplift_learner)
 
     recommendations = build_recommendations(
         account_ids=current["account_id"],
@@ -99,7 +134,10 @@ def main() -> None:
     )
 
     recommendations["scored_at"] = datetime.now(timezone.utc).isoformat()
-    recommendations["model_version"] = f"{churn_model_path.name}@{int(churn_model_path.stat().st_mtime)}"
+    recommendations["model_version"] = (
+        f"{churn_model_path.name}@{int(churn_model_path.stat().st_mtime)}"
+        f"+{uplift_model_path.name}@{int(uplift_model_path.stat().st_mtime)}"
+    )
 
     # Behavioral segment is optional enrichment: batch scoring works fine
     # without it (segmentation is a separate pipeline), but when available

@@ -135,6 +135,31 @@ chronological history — append to it, never rewrite past entries.
 - Next open items: confirm CI actually goes green on GitHub's runners (not
   yet checked), Docker still never actually built.
 
+## 2026-09-02 — Wired the dead uplift-learner config key
+
+- `model.uplift.learner` in `configs/config.yaml` was set but never read --
+  `run_batch_scoring.py` hardcoded the T-learner regardless. Fixed: added
+  `_score_uplift()` dispatch keyed on the config value, loading whichever
+  of the three already-trained artifacts (`uplift_{s,t,x}_learner.joblib`)
+  matches. No new artifacts needed -- all three learners share the same
+  encoded feature-column list saved during training; the S-learner's extra
+  `_treatment` column is appended at scoring time to match training-time
+  column order.
+- Verified by actually running batch scoring under all three settings, not
+  just switching the default: T-learner recommends 69 accounts, X-learner
+  12, S-learner 1 -- consistent with the project's own documented finding
+  that a regularized S-learner under-fits treatment heterogeneity and
+  X-learner lands between S and T, and with the earlier note that CATE
+  correlates weakly with the noisy realized outcome. Restored the config
+  default (`t_learner`) and regenerated `batch_decisions.csv` afterward so
+  committed artifacts match the shipped default.
+- Committed the previously-uncommitted `CLAUDE.md`/`docs/PROGRESS_LOG.md`
+  doc updates from the 2026-09-01 GitHub push session.
+- 162/162 tests still passing, ruff clean. (No new tests added: this repo
+  doesn't unit-test `pipelines/*.py` scripts in isolation -- they're
+  glue code validated by actually running them, same pattern as every
+  other pipeline change so far.)
+
 ---
 
 ## Template for new entries
