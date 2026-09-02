@@ -174,8 +174,11 @@ chronological history — append to it, never rewrite past entries.
 - Fixed with `git update-index --chmod=+x` on all 6 files (no source
   changes needed) -- sets the git-tracked mode to `100755` so it's
   preserved on checkout regardless of the committing machine's OS.
-- Not yet pushed -- next push should be watched via `gh run list` /
-  `gh run watch` to actually confirm green, not just assumed.
+- Pushed and watched via `gh run watch` -- **CI is now actually green**
+  (run `33605551341`: lint, tests-with-coverage, and the pipeline
+  smoke-test all passed on GitHub's Linux runners). First time CI has ever
+  passed on this repo. Only remaining unverified item is Docker (no
+  Docker available in this environment, never actually built).
 
 ## Template for new entries
 

@@ -46,10 +46,10 @@ it, read it when needed:
 ## Repository
 
 **Pushed to GitHub**: https://github.com/mugil0095/harbor-retention-engine
-(`main` branch). The user pushed it themselves from a local terminal (not
-via Claude) on 2026-09-01, initial commit `e4217cd`. Verified from this
-side via `git ls-remote origin main` matching the local commit — this
-actually happened, not just claimed.
+(`main` branch). The user pushes it themselves from a local terminal (not
+via Claude); latest verified push on 2026-09-02, commit `e92da32`. Verified
+from this side each time via `git ls-remote origin main` matching the
+local commit — this actually happened, not just claimed.
 
 Before committing anything new: `.gitignore` was tightened the same day to
 exclude `data/raw/*`, `data/processed/*`, `models_store/*` (all
@@ -58,11 +58,12 @@ reproducible), and `.coverage` — check `git status` looks sane (no
 
 ## Explicitly NOT done — don't assume otherwise
 
-- **CI has not actually run yet.** `.github/workflows/ci.yml` exists and is
-  correct, and there's now a real GitHub remote for it to trigger on, but
-  no push has happened since the workflow file was last touched to confirm
-  it actually passes on GitHub's runners (only run locally so far). Check
-  the Actions tab on the repo, don't assume it's green.
+- **CI passed for the first time on 2026-09-02** (run `33605551341`, after
+  fixing a real failure — see PROGRESS_LOG). Verified via `gh run watch`,
+  not assumed. If you touch `pipelines/*.py` again on Windows, remember new
+  files there need the executable bit set explicitly
+  (`git update-index --chmod=+x`) or ruff's EXE001 will fail on Linux CI
+  while passing silently on Windows.
 - **Docker has never actually been built.** No Docker available in this
   environment. The packaging bug above was found via manual wheel
   build/install reproduction (see `tests/test_packaging.py`), not via
