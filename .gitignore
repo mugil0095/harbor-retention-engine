@@ -26,3 +26,7 @@ runs/
 .coverage
 .coverage.*
 htmlcov/
+
+# Claude Code working memory: local-only, not part of the public repo
+CLAUDE.md
+docs/PROGRESS_LOG.md
