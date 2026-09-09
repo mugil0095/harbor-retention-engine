@@ -57,6 +57,8 @@ def client():
     api._state["batch_decisions"] = None
     api._state["feature_store"] = None
     api._state["model_version"] = "unloaded"
+    api._state["drift_report"] = None
+    api._state["model_registry"] = None
 
 
 def test_health_endpoint_reports_status_ok(client):
@@ -172,3 +174,78 @@ def test_churn_score_by_id_and_by_raw_features_agree_for_the_same_account(client
     by_id = client.get("/accounts/3/churn-score").json()
     by_features = client.post("/score/churn", json={**VALID_PAYLOAD, "account_id": 3}).json()
     assert by_id["churn_probability"] == pytest.approx(by_features["churn_probability"])
+
+
+FAKE_DRIFT_REPORT = {
+    "generated_at": "2026-01-01T00:00:00+00:00",
+    "reference_snapshot_month": 24,
+    "current_snapshot_month": 27,
+    "n_features_checked": 2,
+    "n_critical": 0,
+    "n_warning": 1,
+    "retraining_recommended": False,
+    "features": [
+        {"feature": "tenure_months", "psi": 0.12, "status": "warning"},
+        {"feature": "avg_login_trailing_3m", "psi": 0.01, "status": "stable"},
+    ],
+}
+
+
+def test_drift_endpoint_returns_503_when_not_loaded(client):
+    api._state["drift_report"] = None
+    response = client.get("/monitoring/drift")
+    assert response.status_code == 503
+
+
+def test_drift_endpoint_returns_loaded_report(client):
+    api._state["drift_report"] = FAKE_DRIFT_REPORT
+    response = client.get("/monitoring/drift")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["retraining_recommended"] is False
+    assert body["n_warning"] == 1
+    assert len(body["features"]) == 2
+
+
+def test_model_registry_endpoint_returns_503_when_not_loaded(client):
+    api._state["model_registry"] = None
+    response = client.get("/models/registry")
+    assert response.status_code == 503
+
+
+def test_model_registry_endpoint_returns_loaded_registry(client):
+    fake_registry = {"churn_advanced_model": {"git_commit": "abc1234", "finished_at": "2026-01-01T00:00:00+00:00", "metrics": {"roc_auc": 0.75}}}
+    api._state["model_registry"] = fake_registry
+    response = client.get("/models/registry")
+    assert response.status_code == 200
+    assert response.json() == fake_registry
+
+
+def test_model_version_uses_registry_git_commit_when_available(tmp_path, monkeypatch):
+    """load_artifacts() should prefer the registry's git_commit over the
+    artifact file's raw mtime, once a registry is present -- otherwise the
+    'traceable to the run that produced it' claim in the module docstring
+    is false (this was a real gap this workstream fixed)."""
+    import json
+
+    import joblib
+
+    model_path = tmp_path / "churn_advanced_model.joblib"
+    joblib.dump(FakeChurnModel(), model_path)
+    registry_path = tmp_path / "model_registry.json"
+    with open(registry_path, "w", encoding="utf-8") as f:
+        json.dump({"churn_advanced_model": {"git_commit": "deadbee", "finished_at": None, "metrics": {}}}, f)
+
+    monkeypatch.setattr(api, "_churn_model_path", lambda: model_path)
+    monkeypatch.setattr(api, "_model_registry_path", lambda: registry_path)
+    monkeypatch.setattr(api, "_batch_decisions_path", lambda: tmp_path / "missing_decisions.csv")
+    monkeypatch.setattr(api, "_feature_store_path", lambda: tmp_path / "missing_feature_store.parquet")
+    monkeypatch.setattr(api, "_drift_report_path", lambda: tmp_path / "missing_drift_report.json")
+
+    api.load_artifacts()
+    try:
+        assert api._state["model_version"] == "churn_advanced_model.joblib@deadbee"
+    finally:
+        api._state["churn_model"] = None
+        api._state["model_version"] = "unloaded"
+        api._state["model_registry"] = None

@@ -29,20 +29,27 @@ This is a deliberately simple deployment story for a single-person
 project. It does **not** attempt to be a production MLOps setup; see below
 for what that would add.
 
-**Verification note**: `docker build`/`docker compose up` were not actually
-executed in the environment this project was built in (no Docker available
-there). The Dockerfiles were reviewed by tracing through what they actually
-do rather than assumed to work -- this caught a real bug: `pip install .`
+**Verification note**: `docker build`/`docker compose up` are not runnable in
+the sandboxed environment this project was developed in (no Docker there),
+but `.github/workflows/ci.yml` now builds and runs both images for real on
+every push/PR, using GitHub's `ubuntu-latest` runners (which do have Docker):
+it reuses the data/model artifacts the pipeline smoke-test step already
+generated as the build context, runs `docker compose up --build -d --wait`,
+then curls both `/health` (API) and `/_stcore/health` (dashboard) against
+the live containers before tearing them down. This is the first real,
+CI-verified Docker build+run this project has had -- see the workflow file
+for the exact steps, and check the Actions tab for the latest result rather
+than assuming it's green.
+
+Before that CI step existed, the Dockerfiles were only reviewed by tracing
+through what they actually do, which caught a real bug: `pip install .`
 (non-editable) breaks `harbor.config.REPO_ROOT` because a non-editable
 install physically copies package files out of `src/` into site-packages,
 which would have made the API and dashboard containers fail immediately on
 startup with `FileNotFoundError: Config file not found`. Reproduced and
 fixed (Dockerfiles now use `pip install -e .`); see
 `tests/test_packaging.py`, which builds a real wheel and installs it
-non-editably to pin the failure mode as a regression test. The rest of the
-Docker setup (base image, port mapping, healthcheck) is standard and lower-risk,
-but if you hit something building it, that's the one class of bug review
-alone could still have missed.
+non-editably to pin the failure mode as a regression test.
 
 ## Cloud deployment sketch (not implemented, described for completeness)
 

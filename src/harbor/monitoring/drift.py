@@ -11,9 +11,22 @@ shift / retrain).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
+
+from harbor.features.build_features import NUMERIC_FEATURE_COLUMNS
+
+# tenure_months is excluded from drift monitoring: it increases
+# deterministically for every account, every month, by construction -- it
+# "drifts" between any two snapshots regardless of whether anything about
+# the business actually changed (verified: on real snapshots it alone
+# produces PSI > 0.9 purely from accounts aging). Monitoring it would be
+# pure noise, not signal, and would falsely trigger retraining on a
+# perfectly healthy model. A real system would either exclude counters like
+# this or monitor their *rate* of change instead -- out of scope here.
+DRIFT_MONITORED_FEATURES = [c for c in NUMERIC_FEATURE_COLUMNS if c != "tenure_months"]
 
 
 @dataclass
@@ -85,3 +98,24 @@ def retraining_recommended(reports: list[DriftReport]) -> bool:
     n_critical = sum(1 for r in reports if r.status == "critical")
     n_warning = sum(1 for r in reports if r.status == "warning")
     return n_critical >= 1 or n_warning >= 3
+
+
+def build_drift_report(
+    reports: list[DriftReport], reference_snapshot_month: int, current_snapshot_month: int
+) -> dict:
+    """Pure assembly of the JSON payload run_monitoring.py writes to disk --
+    kept separate from any file I/O so it's unit-testable on its own."""
+    n_critical = sum(1 for r in reports if r.status == "critical")
+    n_warning = sum(1 for r in reports if r.status == "warning")
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "reference_snapshot_month": reference_snapshot_month,
+        "current_snapshot_month": current_snapshot_month,
+        "n_features_checked": len(reports),
+        "n_critical": n_critical,
+        "n_warning": n_warning,
+        "retraining_recommended": retraining_recommended(reports),
+        "features": [
+            {"feature": r.feature, "psi": r.psi, "status": r.status} for r in reports
+        ],
+    }

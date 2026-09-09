@@ -34,6 +34,21 @@ them.
   `econml`/`causalml`). Those would likely do better with more data, but
   add a heavy dependency and more moving parts than an ~800-row RCT sample
   can support -- not implemented, listed under Future Improvements instead.
+- The tiered decision engine (`configs/config.yaml`'s `decision.intervention_tiers`,
+  off by default via `use_tiered_decision_engine: false`) prices two extra
+  intervention options (a cheap email nudge, a pricier white-glove call) by
+  applying a hand-picked `effect_multiplier` to the *one* RCT-validated
+  offer's uplift estimate. Only `standard_offer` (multiplier 1.0) reflects
+  an actual experiment -- the other multipliers are an illustrative modeling
+  assumption, not a measured finding, since no RCT arm for those
+  interventions was ever run. That is exactly why the flag defaults off.
+- The tiered engine assigns each account its own best positive-EV tier
+  independently, then funds top-down by EV within budget -- a greedy
+  heuristic, not a true cross-account knapsack. A real optimizer could gain
+  a bit more total value by downgrading one account to a cheaper tier to
+  free budget for two higher-EV accounts elsewhere; that's real
+  combinatorial optimization and disproportionate complexity for the
+  marginal gain here, so it's listed under Future Improvements instead.
 
 ## Engineering
 

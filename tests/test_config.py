@@ -17,6 +17,18 @@ def test_load_config_reads_real_config_file():
     assert cfg.section("data")["n_accounts"] > 0
 
 
+def test_decision_intervention_tiers_have_required_keys():
+    """Guards against configs/config.yaml drifting out of sync with
+    InterventionTier's fields -- build_tiered_recommendations() unpacks each
+    tier dict as InterventionTier(**tier), which fails with a confusing
+    TypeError (not a clear config error) if a key is renamed or dropped."""
+    cfg = load_config()
+    tiers = cfg.section("decision")["intervention_tiers"]
+    assert len(tiers) > 0
+    for tier in tiers:
+        assert set(tier.keys()) == {"name", "cost_per_account", "effect_multiplier"}
+
+
 def test_repo_root_is_pinned_to_the_actual_project_directory():
     """REPO_ROOT is computed from `Path(__file__).resolve().parents[2]`,
     which is correct only when this file lives at <repo>/src/harbor/config.py

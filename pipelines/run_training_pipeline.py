@@ -73,7 +73,7 @@ from harbor.models.uplift import (
     predict_cate_x_learner,
 )
 from harbor.nlp.ticket_analysis import compare_nlp_approaches
-from harbor.utils.experiment_tracker import RunTracker
+from harbor.utils.experiment_tracker import RunTracker, build_registry_summary
 from harbor.utils.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -129,6 +129,18 @@ def main() -> None:
     )
     feature_store.to_parquet(processed_dir / data_cfg["feature_store_file"], index=False)
     logger.info("Feature store: %d rows across %d snapshots", len(feature_store), feature_store["snapshot_month"].nunique())
+
+    # Drift-monitoring reference: a single snapshot (not pooled across months)
+    # so the reference distribution isn't itself inflated by the fact that
+    # tenure_months/current_mrr grow monotonically across snapshot_months --
+    # pooling would make PSI *less* sensitive to real shifts, not more.
+    # observation_cutoff_month is the snapshot the models actually trained
+    # against, so it's the honest "what we shipped on" baseline.
+    reference_month = data_cfg["observation_cutoff_month"]
+    feature_store[feature_store["snapshot_month"] == reference_month][
+        ["account_id", "snapshot_month"] + NUMERIC_FEATURE_COLUMNS
+    ].to_parquet(models_dir / "feature_reference.parquet", index=False)
+    logger.info("Wrote drift-monitoring reference snapshot (month=%d) to feature_reference.parquet", reference_month)
 
     test_month = data_cfg["test_snapshot_month"]
     train_df = feature_store[feature_store["snapshot_month"] != test_month]
@@ -396,14 +408,30 @@ def main() -> None:
     logger.info("X-learner AUUC=%.4f corr_with_truth=%s", x_eval.auuc, x_eval.correlation_with_true_effect)
 
     import joblib
-    joblib.dump(s_model, models_dir / "uplift_s_learner.joblib")
-    joblib.dump({"treat": t_model_treat, "control": t_model_control}, models_dir / "uplift_t_learner.joblib")
-    joblib.dump({"tau1": x_tau1, "tau0": x_tau0, "propensity": x_propensity}, models_dir / "uplift_x_learner.joblib")
+    for name, artifact, eval_result in [
+        ("uplift_s_learner", s_model, s_eval),
+        ("uplift_t_learner", {"treat": t_model_treat, "control": t_model_control}, t_eval),
+        ("uplift_x_learner", {"tau1": x_tau1, "tau0": x_tau0, "propensity": x_propensity}, x_eval),
+    ]:
+        tracker = RunTracker(models_dir, name)
+        tracker.log_params(random_seed=cfg.random_seed)
+        tracker.log_metrics(
+            auuc=eval_result.auuc,
+            correlation_with_true_effect=eval_result.correlation_with_true_effect,
+        )
+        tracker.save_artifact(artifact, f"{name}.joblib")
+        tracker.finalize()
+    # Not a model -- no run.json lineage needed for a plain column-name list.
     joblib.dump(list(X_t.columns), models_dir / "uplift_feature_columns_encoded.joblib")
 
     with open(models_dir / "training_summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, default=str)
     logger.info("Wrote training_summary.json")
+
+    registry = build_registry_summary(models_dir)
+    with open(models_dir / "model_registry.json", "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=2, default=str)
+    logger.info("Wrote model_registry.json with %d tracked models", len(registry))
 
 
 if __name__ == "__main__":

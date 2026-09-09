@@ -29,6 +29,7 @@ produced them.
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -46,6 +47,7 @@ from harbor.serving.schemas import (
     AccountFeatures,
     ChurnScoreResponse,
     DecisionResponse,
+    DriftReportResponse,
     HealthResponse,
 )
 from harbor.utils.logging_config import configure_logging
@@ -58,6 +60,8 @@ _state: dict = {
     "model_version": "unloaded",
     "batch_decisions": None,
     "feature_store": None,
+    "drift_report": None,
+    "model_registry": None,
 }
 
 
@@ -76,14 +80,46 @@ def _feature_store_path() -> Path:
     return cfg.path(key="processed_dir") / cfg.section("data")["feature_store_file"]
 
 
+def _drift_report_path() -> Path:
+    cfg = load_config()
+    return cfg.path(key="processed_dir") / "drift_report.json"
+
+
+def _model_registry_path() -> Path:
+    cfg = load_config()
+    return cfg.models_dir / "model_registry.json"
+
+
 def load_artifacts() -> None:
+    registry_path = _model_registry_path()
+    if registry_path.exists():
+        with open(registry_path, "r", encoding="utf-8") as f:
+            _state["model_registry"] = json.load(f)
+        logger.info("Loaded model registry (%d tracked models) from %s", len(_state["model_registry"]), registry_path)
+    else:
+        logger.warning("No model registry found at %s; run the training pipeline first.", registry_path)
+
     model_path = _churn_model_path()
     if model_path.exists():
         _state["churn_model"] = joblib.load(model_path)
-        _state["model_version"] = f"{model_path.name}@{int(model_path.stat().st_mtime)}"
+        registry_entry = (_state["model_registry"] or {}).get("churn_advanced_model")
+        version_tag = (
+            registry_entry["git_commit"]
+            if registry_entry and registry_entry.get("git_commit")
+            else int(model_path.stat().st_mtime)
+        )
+        _state["model_version"] = f"{model_path.name}@{version_tag}"
         logger.info("Loaded churn model from %s", model_path)
     else:
         logger.warning("No churn model artifact found at %s; run the training pipeline first.", model_path)
+
+    drift_path = _drift_report_path()
+    if drift_path.exists():
+        with open(drift_path, "r", encoding="utf-8") as f:
+            _state["drift_report"] = json.load(f)
+        logger.info("Loaded drift report from %s", drift_path)
+    else:
+        logger.warning("No drift report found at %s; run pipelines/run_monitoring.py first.", drift_path)
 
     decisions_path = _batch_decisions_path()
     if decisions_path.exists():
@@ -122,7 +158,27 @@ def health() -> HealthResponse:
         churn_model_loaded=_state["churn_model"] is not None,
         batch_decisions_loaded=_state["batch_decisions"] is not None,
         feature_store_loaded=_state["feature_store"] is not None,
+        drift_monitoring_loaded=_state["drift_report"] is not None,
+        model_registry_loaded=_state["model_registry"] is not None,
     )
+
+
+@app.get("/monitoring/drift", response_model=DriftReportResponse)
+def get_drift_report() -> DriftReportResponse:
+    """Latest data-drift report, produced by pipelines/run_monitoring.py."""
+    if _state["drift_report"] is None:
+        raise HTTPException(status_code=503, detail="No drift report loaded. Run pipelines/run_monitoring.py first.")
+    return DriftReportResponse(**_state["drift_report"])
+
+
+@app.get("/models/registry")
+def get_model_registry() -> dict:
+    """Lineage for every tracked model: git commit, training timestamp, and
+    metrics logged at training time. Not a version store -- reflects
+    whatever is currently on disk in models_store/, one entry per model."""
+    if _state["model_registry"] is None:
+        raise HTTPException(status_code=503, detail="No model registry loaded. Run the training pipeline first.")
+    return _state["model_registry"]
 
 
 @app.get("/accounts/{account_id}/churn-score", response_model=ChurnScoreResponse)

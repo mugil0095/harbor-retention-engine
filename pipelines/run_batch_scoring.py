@@ -27,8 +27,11 @@ import pandas as pd
 from harbor.config import load_config
 from harbor.decision.decision_engine import (
     UPLIFT_FEATURE_COLUMNS,
+    InterventionTier,
     build_recommendations,
+    build_tiered_recommendations,
     summarize_portfolio_impact,
+    summarize_tiered_portfolio_impact,
 )
 from harbor.features.build_features import (
     CATEGORICAL_FEATURE_COLUMNS,
@@ -105,17 +108,31 @@ def main() -> None:
     predicted_uplift = _score_uplift(uplift_learner, uplift_artifact, X_uplift)
     logger.info("Scored uplift using model.uplift.learner=%s", uplift_learner)
 
-    recommendations = build_recommendations(
-        account_ids=current["account_id"],
-        churn_probability=pd.Series(churn_proba),
-        predicted_uplift=pd.Series(predicted_uplift),
-        monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
-        months_credited=decision_cfg["ltv_months_saved"],
-        cost_per_account=decision_cfg["intervention_cost_per_account"],
-    )
+    use_tiered = decision_cfg.get("use_tiered_decision_engine", False)
+    tiers = [InterventionTier(**t) for t in decision_cfg.get("intervention_tiers", [])]
 
-    impact = summarize_portfolio_impact(recommendations, decision_cfg["intervention_cost_per_account"])
-    logger.info("Portfolio impact: %s", impact)
+    if use_tiered:
+        recommendations = build_tiered_recommendations(
+            account_ids=current["account_id"],
+            churn_probability=pd.Series(churn_proba),
+            predicted_uplift=pd.Series(predicted_uplift),
+            tiers=tiers,
+            monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
+            months_credited=decision_cfg["ltv_months_saved"],
+        )
+        impact = summarize_tiered_portfolio_impact(recommendations)
+        logger.info("Using tiered decision engine (%d tiers). Portfolio impact: %s", len(tiers), impact)
+    else:
+        recommendations = build_recommendations(
+            account_ids=current["account_id"],
+            churn_probability=pd.Series(churn_proba),
+            predicted_uplift=pd.Series(predicted_uplift),
+            monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
+            months_credited=decision_cfg["ltv_months_saved"],
+            cost_per_account=decision_cfg["intervention_cost_per_account"],
+        )
+        impact = summarize_portfolio_impact(recommendations, decision_cfg["intervention_cost_per_account"])
+        logger.info("Portfolio impact: %s", impact)
 
     # Revenue at risk: ties the churn model's output to a dollar figure a
     # business stakeholder actually cares about, independent of whether any
@@ -172,16 +189,28 @@ def main() -> None:
     )
     budget_sensitivity = []
     for budget in budget_points:
-        recs_at_budget = build_recommendations(
-            account_ids=current["account_id"],
-            churn_probability=pd.Series(churn_proba),
-            predicted_uplift=pd.Series(predicted_uplift),
-            monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
-            months_credited=decision_cfg["ltv_months_saved"],
-            cost_per_account=decision_cfg["intervention_cost_per_account"],
-            budget=budget,
-        )
-        budget_impact = summarize_portfolio_impact(recs_at_budget, decision_cfg["intervention_cost_per_account"])
+        if use_tiered:
+            recs_at_budget = build_tiered_recommendations(
+                account_ids=current["account_id"],
+                churn_probability=pd.Series(churn_proba),
+                predicted_uplift=pd.Series(predicted_uplift),
+                tiers=tiers,
+                monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
+                months_credited=decision_cfg["ltv_months_saved"],
+                budget=budget,
+            )
+            budget_impact = summarize_tiered_portfolio_impact(recs_at_budget)
+        else:
+            recs_at_budget = build_recommendations(
+                account_ids=current["account_id"],
+                churn_probability=pd.Series(churn_proba),
+                predicted_uplift=pd.Series(predicted_uplift),
+                monthly_margin=decision_cfg["avg_monthly_margin_per_account"],
+                months_credited=decision_cfg["ltv_months_saved"],
+                cost_per_account=decision_cfg["intervention_cost_per_account"],
+                budget=budget,
+            )
+            budget_impact = summarize_portfolio_impact(recs_at_budget, decision_cfg["intervention_cost_per_account"])
         budget_sensitivity.append({"budget": budget, **budget_impact})
     logger.info("Budget sensitivity computed at %d budget levels.", len(budget_sensitivity))
 

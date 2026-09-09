@@ -14,7 +14,11 @@ import joblib
 import numpy as np
 import pytest
 
-from harbor.utils.experiment_tracker import RunTracker, _git_commit
+from harbor.utils.experiment_tracker import (
+    RunTracker,
+    _git_commit,
+    build_registry_summary,
+)
 
 
 def test_run_tracker_creates_store_dir_if_missing(tmp_path):
@@ -152,3 +156,33 @@ def test_two_trackers_in_the_same_store_dir_do_not_clobber_each_others_records(t
 
     assert record_a["metrics"]["marker"] == "model_a"
     assert record_b["metrics"]["marker"] == "model_b"
+
+
+def test_build_registry_summary_aggregates_multiple_run_json_files(tmp_path):
+    for run_name, metric_value in [("churn_advanced_model", 0.75), ("uplift_t_learner", 0.20)]:
+        tracker = RunTracker(tmp_path, run_name)
+        tracker.log_metrics(score=metric_value)
+        tracker.finalize()
+
+    registry = build_registry_summary(tmp_path)
+    assert set(registry.keys()) == {"churn_advanced_model", "uplift_t_learner"}
+    assert registry["churn_advanced_model"]["metrics"] == {"score": 0.75}
+    assert registry["uplift_t_learner"]["metrics"] == {"score": 0.20}
+    assert "git_commit" in registry["churn_advanced_model"]
+    assert "finished_at" in registry["churn_advanced_model"]
+
+
+def test_build_registry_summary_returns_empty_dict_when_none_exist(tmp_path):
+    assert build_registry_summary(tmp_path) == {}
+
+
+def test_build_registry_summary_ignores_non_run_json_files(tmp_path):
+    tracker = RunTracker(tmp_path, "churn_advanced_model")
+    tracker.finalize()
+    # training_summary.json / model_registry.json use the same directory but
+    # don't match the "*_run.json" glob and must not be picked up as models.
+    with open(tmp_path / "training_summary.json", "w", encoding="utf-8") as f:
+        json.dump({"nlp": {}}, f)
+
+    registry = build_registry_summary(tmp_path)
+    assert set(registry.keys()) == {"churn_advanced_model"}

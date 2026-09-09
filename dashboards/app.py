@@ -46,8 +46,8 @@ summary = load_json(summary_path)
 decisions_path = processed_dir / "batch_decisions.csv"
 impact_path = processed_dir / "batch_scoring_impact.json"
 
-tab_overview, tab_models, tab_forecast, tab_experiment, tab_segments, tab_accounts = st.tabs(
-    ["Portfolio Overview", "Model Performance", "Forecasting", "Experiment & Uplift", "Customer Segments", "At-Risk Accounts"]
+tab_overview, tab_models, tab_forecast, tab_experiment, tab_segments, tab_accounts, tab_monitoring = st.tabs(
+    ["Portfolio Overview", "Model Performance", "Forecasting", "Experiment & Uplift", "Customer Segments", "At-Risk Accounts", "Monitoring"]
 )
 
 with tab_overview:
@@ -285,9 +285,54 @@ with tab_accounts:
     st.subheader("Batch-scored accounts")
     if decisions_path.exists():
         decisions = pd.read_csv(decisions_path)
+        if "intervention_cost" in decisions.columns:
+            st.caption("Tiered decision engine is active -- intervention cost varies per account by tier.")
+            tier_counts = decisions.loc[decisions["recommended_action"] != "no_action", "recommended_action"].value_counts()
+            if len(tier_counts) > 0:
+                st.bar_chart(tier_counts)
         min_ev = st.slider("Minimum expected value ($)", float(decisions["expected_value"].min()), float(decisions["expected_value"].max()), 0.0)
         filtered = decisions[decisions["expected_value"] >= min_ev].sort_values("expected_value", ascending=False)
         st.dataframe(filtered, use_container_width=True, height=500)
         st.caption(f"Showing {len(filtered)} of {len(decisions)} scored accounts.")
     else:
         st.info("Run `python pipelines/run_batch_scoring.py` to populate this table.")
+
+with tab_monitoring:
+    st.subheader("Data drift (PSI: reference training snapshot vs. current)")
+    drift_path = processed_dir / "drift_report.json"
+    if drift_path.exists():
+        drift = load_json(drift_path)
+        if drift["retraining_recommended"]:
+            st.error(
+                f"Retraining recommended: {drift['n_critical']} critical, {drift['n_warning']} warning feature(s) "
+                f"drifted between snapshot_month={drift['reference_snapshot_month']} (reference) and "
+                f"snapshot_month={drift['current_snapshot_month']} (current)."
+            )
+        else:
+            st.success(
+                f"No retraining trigger: {drift['n_critical']} critical, {drift['n_warning']} warning feature(s) "
+                f"out of {drift['n_features_checked']} checked."
+            )
+        st.caption(
+            "A little drift on tenure/MRR-like features between snapshots is expected -- accounts simply age "
+            f"{drift['current_snapshot_month'] - drift['reference_snapshot_month']} months between the reference "
+            "and current snapshot. That alone shouldn't cross the critical threshold; PSI thresholds follow the "
+            "conventional < 0.1 stable / 0.1-0.25 warning / > 0.25 critical rule of thumb."
+        )
+        drift_df = pd.DataFrame(drift["features"]).sort_values("psi", ascending=False)
+        st.dataframe(drift_df.set_index("feature"), use_container_width=True)
+        st.caption(f"Report generated {drift['generated_at']}.")
+    else:
+        st.info("Run `python pipelines/run_monitoring.py` to populate this section.")
+
+    st.subheader("Model registry (lineage)")
+    registry_path = models_dir / "model_registry.json"
+    if registry_path.exists():
+        registry = load_json(registry_path)
+        registry_rows = [
+            {"model": name, "git_commit": entry.get("git_commit") or "n/a", "finished_at": entry.get("finished_at"), **entry.get("metrics", {})}
+            for name, entry in registry.items()
+        ]
+        st.dataframe(pd.DataFrame(registry_rows).set_index("model"), use_container_width=True)
+    else:
+        st.info("Run `python pipelines/run_training_pipeline.py` to populate this section.")

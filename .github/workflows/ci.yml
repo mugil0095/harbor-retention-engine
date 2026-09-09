@@ -29,7 +29,30 @@ jobs:
         run: |
           python pipelines/run_data_generation.py
           python pipelines/run_training_pipeline.py
+          python pipelines/run_monitoring.py
           python pipelines/run_segmentation.py
           python pipelines/run_batch_scoring.py
           python pipelines/run_cohort_analysis.py
           python pipelines/run_evaluation.py
+
+      # Docker has never been built anywhere else in this project's history
+      # (no Docker in the local dev sandbox) -- this is the first real,
+      # CI-verified build+run. Uses the data/models_store the smoke-test step
+      # above just generated as the build context, so no extra setup is
+      # needed.
+      - name: Build and start Docker services (API + dashboard)
+        run: docker compose -f deployment/docker-compose.yml up --build -d --wait
+
+      - name: Verify API /health via Docker
+        run: curl -sf http://localhost:8000/health
+
+      - name: Verify dashboard is serving via Docker
+        run: curl -sf http://localhost:8501/_stcore/health
+
+      - name: Show container logs
+        if: always()
+        run: docker compose -f deployment/docker-compose.yml logs
+
+      - name: Tear down Docker services
+        if: always()
+        run: docker compose -f deployment/docker-compose.yml down

@@ -55,3 +55,22 @@ class HealthResponse(BaseModel):
     churn_model_loaded: bool
     batch_decisions_loaded: bool
     feature_store_loaded: bool
+    drift_monitoring_loaded: bool
+    model_registry_loaded: bool
+
+
+class FeatureDriftReport(BaseModel):
+    feature: str
+    psi: float
+    status: str
+
+
+class DriftReportResponse(BaseModel):
+    generated_at: str
+    reference_snapshot_month: int
+    current_snapshot_month: int
+    n_features_checked: int
+    n_critical: int
+    n_warning: int
+    retraining_recommended: bool
+    features: list[FeatureDriftReport]

@@ -182,6 +182,19 @@ weak-but-not-zero effect above. This number should be read as "what the
 model believes given the (statistically inconclusive) experiment," not as
 a validated ROI claim.
 
+**Tiered variant** (`decision.use_tiered_decision_engine` in
+`configs/config.yaml`, off by default): prices 3 intervention options
+(email nudge / standard offer / white-glove call) instead of one, each
+scaling the same uplift estimate by a config-defined `effect_multiplier`.
+Only the standard offer's multiplier (1.0) reflects the actual RCT; the
+other two are an explicit, unvalidated modeling assumption -- see
+`docs/LIMITATIONS.md`. In the same batch-scoring run, enabling it raised
+recommended accounts from 69 to 394 (mostly via the cheap email nudge,
+which clears its lower cost bar far more often) and expected net ROI from
+~22% to ~49% -- directionally sensible (a cheaper lever reaches more
+accounts profitably) but inseparable from how optimistic the chosen
+multipliers are, which is exactly why this isn't the default.
+
 ## Intended use / out of scope
 
 - Intended: as a prioritization and decision-support tool for a retention

@@ -30,3 +30,7 @@ htmlcov/
 # Claude Code working memory: local-only, not part of the public repo
 CLAUDE.md
 docs/PROGRESS_LOG.md
+
+# Claude Code local tooling config (dev-server launch config, local
+# permission overrides, lock files) -- machine-specific, not project source
+.claude/

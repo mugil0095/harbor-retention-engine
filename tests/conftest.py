@@ -41,6 +41,12 @@ def make_test_config(**overrides) -> HarborConfig:
             "intervention_cost_per_account": 45.0,
             "avg_monthly_margin_per_account": 38.0,
             "ltv_months_saved": 12,
+            "intervention_tiers": [
+                {"name": "email_nudge", "cost_per_account": 8.0, "effect_multiplier": 0.35},
+                {"name": "standard_offer", "cost_per_account": 45.0, "effect_multiplier": 1.0},
+                {"name": "white_glove_call", "cost_per_account": 150.0, "effect_multiplier": 1.6},
+            ],
+            "use_tiered_decision_engine": False,
         },
         "serving": {"host": "0.0.0.0", "port": 8000},
         "monitoring": {"psi_warning_threshold": 0.1, "psi_critical_threshold": 0.25},

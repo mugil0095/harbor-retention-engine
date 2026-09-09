@@ -1,6 +1,6 @@
 # Evaluation Report
 
-_Generated 2026-09-01T03:11:15.928062+00:00 by `pipelines/run_evaluation.py` from `models_store/training_summary.json`. All figures below come from a single run on synthetic data (seed=42) and will vary slightly if data is regenerated with a different seed._
+_Generated 2026-09-09T07:00:12.992811+00:00 by `pipelines/run_evaluation.py` from `models_store/training_summary.json`. All figures below come from a single run on synthetic data (seed=42) and will vary slightly if data is regenerated with a different seed._
 
 ## 1. NLP: ticket risk classifier vs. VADER baseline
 

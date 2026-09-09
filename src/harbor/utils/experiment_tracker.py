@@ -70,3 +70,25 @@ class RunTracker:
         with open(record_path, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2, default=str)
         return record_path
+
+
+def build_registry_summary(store_dir: Path) -> dict[str, dict]:
+    """Aggregates every `*_run.json` written by RunTracker.finalize() in
+    `store_dir` into one lineage manifest: run_name -> {git_commit,
+    finished_at, metrics}. This is deliberately not a version *store* --
+    every run still overwrites its artifact file in place -- just a single
+    place to see what's currently live and how it was validated, matching
+    this project's "no MLflow server, file-based, upgradeable later" tracking
+    philosophy (see the module docstring)."""
+    store_dir = Path(store_dir)
+    registry: dict[str, dict] = {}
+    for record_path in sorted(store_dir.glob("*_run.json")):
+        with open(record_path, "r", encoding="utf-8") as f:
+            record = json.load(f)
+        run_name = record.get("run_name", record_path.stem.removesuffix("_run"))
+        registry[run_name] = {
+            "git_commit": record.get("git_commit"),
+            "finished_at": record.get("finished_at"),
+            "metrics": record.get("metrics", {}),
+        }
+    return registry
